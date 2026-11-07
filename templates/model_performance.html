@@ -1,0 +1,285 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Performance</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 30px;
+            font-family: Arial, sans-serif;
+            background: #f4f7fb;
+            color: #243047;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-bottom: 25px;
+        }
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #68758a;
+            margin: 0;
+        }
+
+        .back {
+            text-decoration: none;
+            color: white;
+            background: #263b80;
+            padding: 11px 17px;
+            border-radius: 7px;
+        }
+
+        .back:hover {
+            background: #18285c;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 18px;
+            margin-bottom: 25px;
+        }
+
+        .card,
+        .panel {
+            background: white;
+            padding: 22px;
+            border-radius: 12px;
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.06);
+        }
+
+        .metric-name {
+            color: #68758a;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .metric-value {
+            font-size: 27px;
+            font-weight: bold;
+            color: #263b80;
+            overflow-wrap: anywhere;
+        }
+
+        .panel {
+            margin-bottom: 22px;
+            overflow-x: auto;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: center;
+            min-width: 450px;
+        }
+
+        th,
+        td {
+            padding: 13px;
+            border: 1px solid #e3e8f0;
+        }
+
+        th {
+            background: #edf1fa;
+        }
+
+        tbody tr:hover {
+            background: #f7f9fd;
+        }
+
+        .note {
+            color: #68758a;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-top: 18px;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 16px;
+            }
+
+            .metric-value {
+                font-size: 23px;
+            }
+
+            .card,
+            .panel {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- Page Header -->
+    <div class="header">
+        <div>
+            <h1>Model Performance</h1>
+            <p class="subtitle">
+                Vehicle Insurance Risk Assessment — Logistic Regression
+            </p>
+        </div>
+
+        <a class="back" href="{{ url_for('dashboard') }}">
+            Back to Dashboard
+        </a>
+    </div>
+
+    <!-- Performance Metrics -->
+    <div class="metrics">
+
+        <div class="card">
+            <div class="metric-name">Accuracy</div>
+            <div class="metric-value">
+                {{ metrics["Accuracy"] }}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="metric-name">Precision</div>
+            <div class="metric-value">
+                {{ metrics["Precision"] }}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="metric-name">Recall</div>
+            <div class="metric-value">
+                {{ metrics["Recall"] }}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="metric-name">F1-Score</div>
+            <div class="metric-value">
+                {{ metrics["F1-Score"] }}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="metric-name">ROC-AUC</div>
+            <div class="metric-value">
+                {{ metrics["ROC-AUC"] }}
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Confusion Matrix -->
+    <div class="panel">
+        <h2>Confusion Matrix</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Actual / Predicted</th>
+                    <th>No Claim (0)</th>
+                    <th>Claim Filed (1)</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for row in matrix %}
+                <tr>
+                    <th>
+                        {% if loop.index == 1 %}
+                            Actual: No Claim (0)
+                        {% else %}
+                            Actual: Claim Filed (1)
+                        {% endif %}
+                    </th>
+
+                    {% for value in row %}
+                    <td>{{ value }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <p class="note">
+            Rows represent actual classes, and columns represent
+            predicted classes.
+        </p>
+    </div>
+
+    <!-- Classification Report -->
+    <div class="panel">
+        <h2>Classification Report</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Class</th>
+
+                    {% for column in report_columns %}
+                    <th>{{ column }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for item in report_rows %}
+                <tr>
+                    <th>{{ item.class_name }}</th>
+
+                   {% for value in item["values"] %}
+                    <td>{{ value }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <p class="note">
+            <strong>Precision:</strong> How accurately the model predicts
+            a class.
+
+            <br>
+            <strong>Recall:</strong> How many actual cases of a class
+            the model correctly identifies.
+
+            <br>
+            <strong>F1-Score:</strong> A balance between precision and recall.
+
+            <br>
+            <strong>Support:</strong> Number of actual test samples
+            belonging to each class.
+        </p>
+    </div>
+
+</div>
+
+</body>
+</html>

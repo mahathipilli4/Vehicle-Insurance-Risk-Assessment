@@ -1,0 +1,1454 @@
+
+================ app.py ================
+
+
+from flask import (
+    Flask, render_template, request,
+    redirect, session, url_for
+)
+import sqlite3
+import joblib
+import pandas as pd
+from pathlib import Path
+from functools import wraps
+from werkzeug.security import check_password_hash
+import os
+
+app = Flask(__name__)
+
+app.secret_key = os.environ.get(
+    "FLASK_SECRET_KEY",
+    "development-only-change-this-secret"
+)
+
+BASE_DIR = Path(__file__).resolve().parent
+
+# Load trained model
+model = joblib.load(BASE_DIR / "vehicle_insurance_model.pkl")
+
+FEATURES = [
+    "driver_age",
+    "past_accidents",
+    "speeding_tickets",
+    "annual_mileage"
+]
+
+
+# Connect to existing users database
+def get_db_connection():
+    conn = sqlite3.connect(BASE_DIR / "users.db")
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+# Check login status
+def login_required(view_function):
+    @wraps(view_function)
+    def wrapped(*args, **kwargs):
+        if "username" not in session or "role" not in session:
+            return redirect(url_for("login"))
+        return view_function(*args, **kwargs)
+    return wrapped
+
+
+# Login page
+@app.route("/", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        role = request.form.get("role", "").strip()
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        conn = get_db_connection()
+
+        try:
+            account = conn.execute(
+                """
+                SELECT username, password, role
+                FROM users
+                WHERE username = ? AND role = ?
+                """,
+                (username, role)
+            ).fetchone()
+        finally:
+            conn.close()
+
+        if account and check_password_hash(
+            account["password"], password
+        ):
+            session.clear()
+            session["username"] = account["username"]
+            session["role"] = account["role"]
+
+            return redirect(url_for("dashboard"))
+
+        return render_template(
+            "login.html",
+            error="Invalid role, username, or password."
+        ), 401
+
+    if "username" in session:
+        return redirect(url_for("dashboard"))
+
+    return render_template("login.html")
+
+
+# Dashboard
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    return render_template(
+        "dashboard.html",
+        role=session["role"],
+        username=session["username"]
+    )
+
+
+# Prediction form
+@app.route("/prediction")
+@login_required
+def prediction():
+    return render_template(
+        "prediction.html",
+        role=session["role"]
+    )
+
+
+# Predict claim probability
+@app.route("/predict", methods=["POST"])
+@login_required
+def predict():
+    try:
+        driver_age = int(request.form["driver_age"])
+        past_accidents = int(request.form["past_accidents"])
+        speeding_tickets = int(request.form["speeding_tickets"])
+        annual_mileage = float(request.form["annual_mileage"])
+
+        # Validate inputs
+        if not 18 <= driver_age <= 100:
+            return "Driver age must be between 18 and 100.", 400
+
+        if (
+            past_accidents < 0
+            or speeding_tickets < 0
+            or annual_mileage < 0
+        ):
+            return "Values cannot be negative.", 400
+
+        # Prepare model input
+        input_data = pd.DataFrame(
+            [[
+                driver_age,
+                past_accidents,
+                speeding_tickets,
+                annual_mileage
+            ]],
+            columns=FEATURES
+        )
+
+        # Predict probability
+        probabilities = model.predict_proba(input_data)[0]
+        classes = list(model.classes_)
+
+        if 1 not in classes:
+            raise ValueError("Claim class 1 is missing.")
+
+        claim_probability = (
+            float(probabilities[classes.index(1)]) * 100
+        )
+
+        probability = round(claim_probability, 2)
+        prediction_value = int(model.predict(input_data)[0])
+
+        # Categorize estimated risk
+        if claim_probability <= 30:
+            risk_label = "Low Claim Risk"
+        elif claim_probability <= 60:
+            risk_label = "Medium Claim Risk"
+        else:
+            risk_label = "High Claim Risk"
+
+        risk_description = (
+            "This is a model-estimated claim probability, "
+            "not a guarantee of a future claim or an actual "
+            "insurance decision."
+        )
+
+        # Save assessment history
+        history_file = BASE_DIR / "assessment_history.csv"
+
+        record = pd.DataFrame([{
+            "driver_age": driver_age,
+            "past_accidents": past_accidents,
+            "speeding_tickets": speeding_tickets,
+            "annual_mileage": annual_mileage,
+            "prediction": prediction_value,
+            "claim_probability": probability
+        }])
+
+        record.to_csv(
+            history_file,
+            mode="a",
+            header=not history_file.exists()
+                or history_file.stat().st_size == 0,
+            index=False
+        )
+
+        return render_template(
+            "result.html",
+            driver_age=driver_age,
+            past_accidents=past_accidents,
+            speeding_tickets=speeding_tickets,
+            annual_mileage=annual_mileage,
+            risk_label=risk_label,
+            risk_description=risk_description,
+            probability=probability,
+            role=session["role"]
+        )
+
+    except (ValueError, KeyError):
+        return "Please enter valid values in all fields.", 400
+
+
+# Assessment History page
+@app.route("/history")
+@login_required
+def history():
+    history_file = BASE_DIR / "assessment_history.csv"
+
+    if history_file.exists() and history_file.stat().st_size > 0:
+        df = pd.read_csv(history_file).fillna("")
+        records = df.to_dict(orient="records")
+    else:
+        records = []
+
+    return render_template(
+        "history.html",
+        role=session["role"],
+        username=session["username"],
+        records=records
+    )
+
+
+# Logout
+@app.route("/logout")
+@login_required
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+if __name__ == "__main__":
+    import webbrowser
+    from threading import Timer
+
+    url = "http://127.0.0.1:5000"
+
+    Timer(1.5, lambda: webbrowser.open(url)).start()
+
+    app.run(debug=True, use_reloader=False)
+
+================ concat.py ================
+
+
+import pandas as pd
+from pathlib import Path
+
+folder = Path(__file__).resolve().parent
+
+df = pd.read_csv(folder / "car_insurance_claim.csv")
+
+features = [
+    "driver_age",
+    "past_accidents",
+    "speeding_tickets",
+    "annual_mileage",
+    "claim_filed"
+]
+
+df = df[features].copy()
+
+print("Dataset shape:", df.shape)
+print("\nMissing values:")
+print(df.isnull().sum())
+
+print("\nTarget distribution:")
+print(df["claim_filed"].value_counts())
+
+print("\nAverage features by claim:")
+print(
+    df.groupby("claim_filed")[
+        ["driver_age", "past_accidents",
+         "speeding_tickets", "annual_mileage"]
+    ].mean().round(2)
+)
+
+df = df.dropna(subset=features)
+
+df.to_csv(
+    folder / "vehicle_insurance_training.csv",
+    index=False
+)
+
+print("\nSaved: vehicle_insurance_training.csv")
+
+================ preprocess.py ================
+
+
+import pandas as pd
+from pathlib import Path
+
+folder = Path(__file__).resolve().parent
+input_file = folder / "combined_vehicle_insurance.csv"
+output_file = folder / "preprocessed_vehicle_insurance.csv"
+
+df = pd.read_csv(input_file)
+
+print("Original dataset shape:", df.shape)
+
+required_columns = [
+    "driver_age",
+    "past_accidents",
+    "speeding_tickets",
+    "annual_mileage",
+    "claim_filed",
+    "data_source"
+]
+
+df = df[required_columns].copy()
+
+numeric_columns = [
+    "driver_age",
+    "past_accidents",
+    "speeding_tickets",
+    "annual_mileage",
+    "claim_filed"
+]
+
+for col in numeric_columns:
+    df[col] = pd.to_numeric(df[col], errors="coerce")
+
+print("\nMissing values before cleaning:")
+print(df.isnull().sum())
+
+df = df.dropna(subset=["claim_filed"]).copy()
+df = df[df["claim_filed"].isin([0, 1])].copy()
+df["claim_filed"] = df["claim_filed"].astype(int)
+
+duplicates = df.duplicated().sum()
+print("\nDuplicate records found:", duplicates)
+
+df = df.drop_duplicates().copy()
+
+print("\nMissing feature values:")
+print(df[numeric_columns[:-1]].isnull().sum())
+
+print("\nFinal dataset shape:", df.shape)
+print("\nTarget distribution:")
+print(df["claim_filed"].value_counts())
+
+df.to_csv(output_file, index=False)
+
+print("\nSaved:", output_file.name)
+
+================ train.py ================
+
+
+import pandas as pd
+from pathlib import Path
+from sklearn.model_selection import train_test_split
+
+folder = Path(__file__).resolve().parent
+
+# Load the prepared dataset
+df = pd.read_csv(folder / "vehicle_insurance_training.csv")
+
+# Select input features and target
+X = df[
+    [
+        "driver_age",
+        "past_accidents",
+        "speeding_tickets",
+        "annual_mileage"
+    ]
+]
+
+y = df["claim_filed"]
+
+# Split into training and testing data
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+print("Training data shape:", X_train.shape)
+print("Testing data shape:", X_test.shape)
+
+print("\nTraining target distribution:")
+print(y_train.value_counts())
+
+print("\nTesting target distribution:")
+print(y_test.value_counts())
+
+# Save split datasets
+X_train.assign(claim_filed=y_train).to_csv(
+    folder / "X_train.csv", index=False
+)
+
+X_test.assign(claim_filed=y_test).to_csv(
+    folder / "X_test.csv", index=False
+)
+
+print("\nTrain-test split completed successfully!")
+print("Saved X_train.csv and X_test.csv")
+
+================ modeltrain.py ================
+
+
+import pandas as pd
+import joblib
+from pathlib import Path
+
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+    confusion_matrix,
+    classification_report
+)
+
+folder = Path(__file__).resolve().parent
+
+# Load train and test datasets
+train_df = pd.read_csv(folder / "X_train.csv")
+test_df = pd.read_csv(folder / "X_test.csv")
+
+X_train = train_df.drop(columns=["claim_filed"])
+y_train = train_df["claim_filed"]
+
+X_test = test_df.drop(columns=["claim_filed"])
+y_test = test_df["claim_filed"]
+
+# Logistic Regression with feature scaling
+model = Pipeline([
+    ("scaler", StandardScaler()),
+    ("classifier", LogisticRegression(
+        max_iter=1000,
+        random_state=42
+    ))
+])
+
+# Train the model
+model.fit(X_train, y_train)
+
+# Predictions
+y_pred = model.predict(X_test)
+y_prob = model.predict_proba(X_test)[:, 1]
+
+# Performance metrics
+print("\n===== LOGISTIC REGRESSION PERFORMANCE =====")
+print(f"Accuracy  : {accuracy_score(y_test, y_pred):.4f}")
+print(f"Precision : {precision_score(y_test, y_pred, zero_division=0):.4f}")
+print(f"Recall    : {recall_score(y_test, y_pred, zero_division=0):.4f}")
+print(f"F1-Score  : {f1_score(y_test, y_pred, zero_division=0):.4f}")
+print(f"ROC-AUC   : {roc_auc_score(y_test, y_prob):.4f}")
+
+print("\n===== CONFUSION MATRIX =====")
+print(confusion_matrix(y_test, y_pred))
+
+print("\n===== CLASSIFICATION REPORT =====")
+print(classification_report(
+    y_test,
+    y_pred,
+    target_names=["No Claim (0)", "Claim Filed (1)"],
+    zero_division=0
+))
+
+# Save the trained model
+joblib.dump(model, folder / "vehicle_insurance_model.pkl")
+
+print("\nLogistic Regression model saved successfully!")
+
+================ prediction.py ================
+
+import joblib
+import pandas as pd
+from pathlib import Path
+
+folder = Path(__file__).resolve().parent
+model = joblib.load(folder / "vehicle_insurance_model.pkl")
+
+print("=== Vehicle Insurance Risk Assessment ===")
+
+try:
+    driver_age = int(input("Enter driver age: "))
+    past_accidents = int(input("Enter number of past accidents: "))
+    speeding_tickets = int(input("Enter number of speeding tickets: "))
+    annual_mileage = float(input("Enter annual mileage: "))
+
+    if not 18 <= driver_age <= 100:
+        raise ValueError("Driver age must be between 18 and 100.")
+
+    if past_accidents < 0 or speeding_tickets < 0 or annual_mileage < 0:
+        raise ValueError("Accidents, tickets, and mileage cannot be negative.")
+
+    customer = pd.DataFrame([{
+        "driver_age": driver_age,
+        "past_accidents": past_accidents,
+        "speeding_tickets": speeding_tickets,
+        "annual_mileage": annual_mileage
+    }])
+
+    prediction = int(model.predict(customer)[0])
+    probabilities = model.predict_proba(customer)[0]
+    classes = list(model.classes_)
+    claim_probability = probabilities[classes.index(1)] * 100
+
+    print("\n=== Assessment Result ===")
+    print("Predicted class:", prediction)
+    print(
+        "Prediction:",
+        "Claim Filed (1)" if prediction == 1 else "No Claim (0)"
+    )
+    print(f"Model-estimated claim probability: {claim_probability:.2f}%")
+
+    print("\nNote: This is an educational ML estimate,")
+    print("not a guarantee or an actual insurance decision.")
+
+except ValueError as error:
+    print("Invalid input:", error)
+
+================ vehicle.py ================
+
+import pandas as pd
+
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+
+
+# =======================================================
+# VEHICLE INSURANCE RISK ASSESSMENT
+# =======================================================
+
+print("=" * 55)
+print("       VEHICLE INSURANCE RISK ASSESSMENT")
+print("=" * 55)
+
+
+# 1. LOAD BOTH ORIGINAL DATASETS
+
+df1 = pd.read_csv("car_insurance_claim.csv")
+df2 = pd.read_csv("Car_insurance_new.csv")
+
+print("\n1. ORIGINAL DATASET DETAILS")
+print("-" * 40)
+print("Old Dataset: car_insurance_claim.csv")
+print("Rows:", df1.shape[0])
+print("Columns:", df1.shape[1])
+
+print("\nNew Dataset: Car_insurance_new.csv")
+print("Rows:", df2.shape[0])
+print("Columns:", df2.shape[1])
+
+
+# 2. STANDARDIZE COMMON FEATURES
+
+print("\n2. STANDARDIZING COMMON FEATURES")
+print("-" * 40)
+
+age_mapping = {
+    "16-25": 20.5,
+    "26-39": 32.5,
+    "40-64": 52.0,
+    "65+": 70.0
+}
+
+df2["AGE"] = df2["AGE"].map(age_mapping)
+
+common_columns = [
+    "driver_age",
+    "past_accidents",
+    "speeding_tickets",
+    "annual_mileage",
+    "claim_filed"
+]
+
+data1 = df1[common_columns].copy()
+
+data2 = df2.rename(columns={
+    "AGE": "driver_age",
+    "PAST_ACCIDENTS": "past_accidents",
+    "SPEEDING_VIOLATIONS": "speeding_tickets",
+    "ANNUAL_MILEAGE": "annual_mileage",
+    "OUTCOME": "claim_filed"
+})[common_columns].copy()
+
+print("Common features selected:")
+print(common_columns)
+
+
+# 3. CONCATENATE BOTH DATASETS
+
+data1["data_source"] = "Old Dataset"
+data2["data_source"] = "New Kaggle Dataset"
+
+print("\n3. CONCATENATING DATASETS")
+print("-" * 40)
+
+combined_df = pd.concat(
+    [data1, data2],
+    ignore_index=True
+)
+
+print("Concatenation completed successfully!")
+print("Old dataset records:", len(data1))
+print("New dataset records:", len(data2))
+print("Total records:", len(combined_df))
+print("Total columns:", len(combined_df.columns))
+print("Combined dataset shape:", combined_df.shape)
+
+
+# 4. MISSING VALUES
+
+print("\n4. MISSING VALUES BEFORE PREPROCESSING")
+print("-" * 40)
+print(combined_df.isnull().sum())
+print("\nTotal missing values:", combined_df.isnull().sum().sum())
+
+
+# 5. COMBINED DATASET PREVIEW
+
+print("\n5. COMBINED DATASET PREVIEW")
+print("-" * 40)
+print(combined_df.head(10).to_string(index=False))
+
+
+# 6. RECORDS FROM EACH DATASET
+
+print("\n6. RECORDS FROM EACH DATASET")
+print("-" * 40)
+print(combined_df["data_source"].value_counts())
+
+
+# 7. SAVE COMBINED DATASET
+
+combined_df.to_csv("combined_vehicle_insurance.csv", index=False)
+
+print("\nCombined dataset saved:")
+print("combined_vehicle_insurance.csv")
+print("\n========== CONCATENATION COMPLETED ==========")
+
+
+# MODEL TRAINING — NO TRAINING/EVALUATION OUTPUT
+
+feature_columns = [
+    "driver_age",
+    "past_accidents",
+    "speeding_tickets",
+    "annual_mileage"
+]
+
+target_column = "claim_filed"
+
+for col in feature_columns + [target_column]:
+    combined_df[col] = pd.to_numeric(
+        combined_df[col],
+        errors="coerce"
+    )
+
+combined_df = combined_df.dropna(subset=[target_column])
+combined_df = combined_df[
+    combined_df[target_column].isin([0, 1])
+].copy()
+
+combined_df[target_column] = combined_df[target_column].astype(int)
+
+X = combined_df[feature_columns]
+y = combined_df[target_column]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+model = Pipeline([
+    ("imputer", SimpleImputer(strategy="median")),
+    ("scaler", StandardScaler()),
+    ("classifier", LogisticRegression(max_iter=1000))
+])
+
+model.fit(X_train, y_train)
+
+
+# 8. ML PREDICTION WITH RISK LEVEL
+
+print("\n8. VEHICLE INSURANCE CLAIM PREDICTION")
+print("-" * 40)
+
+try:
+    driver_age = float(input("Enter driver age: "))
+    past_accidents = int(input("Enter number of past accidents: "))
+    speeding_tickets = int(input("Enter number of speeding tickets: "))
+    annual_mileage = float(input("Enter annual mileage: "))
+    if not 18 <= driver_age <= 100:
+        raise ValueError("Driver age must be between 18 and 100.")
+    if past_accidents < 0 or speeding_tickets < 0:
+        raise ValueError("Accident and ticket counts cannot be negative.")
+    if annual_mileage < 0:
+        raise ValueError("Annual mileage cannot be negative.")
+    new_data = pd.DataFrame([{
+        "driver_age": driver_age,
+        "past_accidents": past_accidents,
+        "speeding_tickets": speeding_tickets,
+        "annual_mileage": annual_mileage
+    }])
+
+    prediction = model.predict(new_data)[0]
+    probabilities = model.predict_proba(new_data)[0]
+    claim_index = list(model.classes_).index(1)
+    claim_probability = probabilities[claim_index] * 100
+    print("\nPREDICTION RESULT")
+    if prediction == 1:
+        print("Prediction: Claim Filed")
+    else:
+        print("Prediction: No Claim Filed")
+
+    print(f"Estimated probability of claim: {claim_probability:.2f}%")
+   # Risk classification based on predicted claim probability
+    if claim_probability >= 50:
+        print("Risk Level: HIGH RISK")
+    else:
+        print("Risk Level: LOW RISK")
+except ValueError as error:
+    print("Invalid input:", error)
+# 9. UNDERWRITING ASSESSMENT
+print("\n9. UNDERWRITING ASSESSMENT")
+print("-" * 40)
+owner = input(
+    "Is the vehicle owner the policyholder? (yes/no): "
+).strip().lower()
+driver = input(
+    "Who was driving? (owner/friend/family): "
+).strip().lower()
+license_valid = input(
+    "Does the actual driver have a valid license? (yes/no): "
+).strip().lower()
+policy_type = input(
+    "Policy type (comprehensive/third_party): "
+).strip().lower()
+vehicle_damaged = input(
+    "Was the insured vehicle damaged? (yes/no): "
+).strip().lower()
+driver_injured = input(
+    "Was the driver injured? (yes/no): "
+).strip().lower()
+third_party_injured = input(
+    "Was a third party injured? (yes/no): "
+).strip().lower()
+# 10. UNDERWRITING RULES
+print("\n10. UNDERWRITING REVIEW")
+print("-" * 40)
+valid_yes_no = ["yes", "no"]
+valid_drivers = ["owner", "friend", "family"]
+valid_policies = ["comprehensive", "third_party"]
+
+if owner not in valid_yes_no:
+    print("Invalid owner input.")
+
+elif driver not in valid_drivers:
+    print("Invalid driver input.")
+
+elif license_valid not in valid_yes_no:
+    print("Invalid license input.")
+
+elif policy_type not in valid_policies:
+    print("Invalid policy type.")
+
+elif any(value not in valid_yes_no for value in [
+    vehicle_damaged,
+    driver_injured,
+    third_party_injured
+]):
+    print("Invalid accident details.")
+
+else:
+    manual_review = False
+
+    if owner == "no":
+        print("Verify policyholder and vehicle ownership details.")
+        manual_review = True
+
+    if driver != "owner":
+        print("Actual driver differs from the owner.")
+        print("Check permitted-driver conditions and policy terms.")
+        manual_review = True
+
+    if license_valid == "no":
+        print("Valid driving licence not confirmed.")
+        print("Review applicable policy conditions.")
+        manual_review = True
+
+    if policy_type == "third_party" and vehicle_damaged == "yes":
+        print("Own vehicle damage is generally not covered")
+        print("under third-party-only insurance.")
+        print("Check the actual policy wording.")
+        manual_review = True
+
+    if driver_injured == "yes":
+        print("Driver injury reported.")
+        print("Check applicable personal accident or medical coverage.")
+        manual_review = True
+
+    if third_party_injured == "yes":
+        print("Third-party injury reported.")
+        print("Review liability coverage and policy conditions.")
+        manual_review = True
+
+    if manual_review:
+        print("\nUnderwriting Result: MANUAL REVIEW REQUIRED")
+    else:
+        print(
+            "\nUnderwriting Result: "
+            "FURTHER POLICY VERIFICATION REQUIRED"
+        )
+print("\n========== PROCESS COMPLETED ==========")
+
+================ static\style.css ================
+
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f3f6fa;
+    color: #183153;
+    line-height: 1.6;
+}
+
+.topbar {
+    min-height: 100px;
+    padding: 22px 4%;
+    background: #ffffff;
+    border-bottom: 1px solid #dce4ed;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.topbar h2 {
+    margin: 0;
+    font-size: 27px;
+    color: #183b63;
+}
+
+.topbar a {
+    color: #245b8f;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.topbar a:hover {
+    text-decoration: underline;
+}
+
+.container {
+    width: 92%;
+    max-width: 1210px;
+    margin: 35px auto;
+}
+
+.container > h1 {
+    font-size: 34px;
+    margin: 0 0 8px;
+    color: #183b63;
+}
+
+.container > p {
+    margin-top: 0;
+    margin-bottom: 24px;
+}
+
+.cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 22px;
+    margin: 24px 0 28px;
+}
+
+.card {
+    background: #ffffff;
+    border: 1px solid #dce4ed;
+    border-radius: 10px;
+    padding: 25px;
+    margin-bottom: 22px;
+}
+
+.cards .card {
+    margin-bottom: 0;
+    min-height: 180px;
+}
+
+.card h2,
+.card h3 {
+    color: #183b63;
+    margin-top: 0;
+}
+
+.cards .card p {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 0;
+}
+
+.card form {
+    max-width: 650px;
+}
+
+label {
+    display: block;
+    margin: 17px 0 7px;
+    font-weight: 600;
+}
+
+input,
+select {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #183153;
+    font-size: 15px;
+}
+
+input:focus,
+select:focus {
+    outline: 2px solid #bfdbfe;
+    border-color: #245b8f;
+}
+
+button {
+    display: inline-block;
+    margin-top: 22px;
+    padding: 12px 21px;
+    border: none;
+    border-radius: 6px;
+    background: #245b8f;
+    color: #ffffff;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #19456e;
+}
+
+.role-panel {
+    margin: 20px 0;
+    padding: 20px;
+    border-left: 4px solid #245b8f;
+    border-radius: 6px;
+    background: #eef5fc;
+}
+
+.role-panel h2,
+.role-panel h3 {
+    margin-top: 0;
+}
+
+.result-low {
+    color: #15803d;
+}
+
+.result-medium {
+    color: #b45309;
+}
+
+.result-high {
+    color: #b91c1c;
+}
+
+@media (max-width: 760px) {
+    .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 20px;
+    }
+
+    .topbar h2 {
+        font-size: 22px;
+    }
+
+    .container {
+        width: 92%;
+        margin: 24px auto;
+    }
+
+    .cards {
+        grid-template-columns: 1fr;
+    }
+
+    .card {
+        padding: 20px;
+    }
+}
+
+================ templates\dashboard.html ================
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Insurance Dashboard</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <header class="topbar">
+        <h2>Vehicle Insurance Risk Assessment</h2>
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </header>
+
+    <main class="container">
+
+        <h1>
+            {% if role == "Admin" %}
+                Admin Dashboard
+            {% elif role == "Analyst" %}
+                Analyst Dashboard
+            {% elif role == "Underwriter" %}
+                Underwriter Dashboard
+            {% else %}
+                User Dashboard
+            {% endif %}
+        </h1>
+
+        <p>
+            Welcome, <strong>{{ username }}</strong>!
+            Your role: <strong>{{ role }}</strong>
+        </p>
+
+        {% if role == "Admin" %}
+
+            <section class="card">
+                <h2>Admin Control Panel</h2>
+                <p>Welcome to the administration section.</p>
+                <ul>
+                    <li>Access the risk assessment system</li>
+                    <li>View assessment history</li>
+                    <li>Monitor the application</li>
+                </ul>
+                <button onclick="window.location.href='/prediction'">
+                    Open Risk Assessment
+                </button>
+                <button onclick="window.location.href='/history'">
+                    View Assessment History
+                </button>
+            </section>
+
+        {% elif role == "Analyst" %}
+
+            <section class="card">
+                <h2>Analyst Workspace</h2>
+                <p>Use the trained Logistic Regression model to estimate claim probability.</p>
+                <ul>
+                    <li>Enter driver details</li>
+                    <li>Generate claim-risk predictions</li>
+                    <li>Review assessment results</li>
+                </ul>
+                <button onclick="window.location.href='/prediction'">
+                    Start Risk Analysis
+                </button>
+            </section>
+
+        {% elif role == "Underwriter" %}
+
+            <section class="card">
+                <h2>Underwriter Workspace</h2>
+                <p>Review driver information and model-estimated claim risk as supporting information.</p>
+                <ul>
+                    <li>Open risk assessment</li>
+                    <li>Review claim probability</li>
+                    <li>Use results to support manual review</li>
+                </ul>
+                <button onclick="window.location.href='/prediction'">
+                    Assess Claim Risk
+                </button>
+                <button onclick="window.location.href='/history'">
+                    View Assessment History
+                </button>
+            </section>
+
+        {% endif %}
+
+    </main>
+
+</body>
+</html>
+
+================ templates\history.html ================
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assessment History</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <header class="topbar">
+        <h2>Vehicle Insurance Risk Assessment</h2>
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+    </header>
+
+    <main class="container">
+        <h1>Assessment History</h1>
+        <p>Previous vehicle insurance risk assessments</p>
+
+        <section class="card" style="overflow-x: auto;">
+
+            {% if records %}
+            <table style="width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr>
+                        <th>Driver Age</th>
+                        <th>Past Accidents</th>
+                        <th>Speeding Tickets</th>
+                        <th>Annual Mileage</th>
+                        <th>Prediction</th>
+                        <th>Claim Probability</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for record in records %}
+                    <tr>
+                        <td>{{ record.driver_age }}</td>
+                        <td>{{ record.past_accidents }}</td>
+                        <td>{{ record.speeding_tickets }}</td>
+                        <td>{{ record.annual_mileage }}</td>
+
+                        <td>
+                            {% if record.prediction|string == "1" %}
+                                Claim Predicted
+                            {% elif record.prediction|string == "0" %}
+                                No Claim Predicted
+                            {% else %}
+                                {{ record.prediction }}
+                            {% endif %}
+                        </td>
+
+                        <td>{{ record.claim_probability }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            {% else %}
+                <p>No assessment records available yet.</p>
+            {% endif %}
+
+        </section>
+
+        <button onclick="window.location.href='/dashboard'">
+            Back to Dashboard
+        </button>
+    </main>
+
+</body>
+</html>
+
+================ templates\login.html ================
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Vehicle Insurance Risk Assessment</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: Arial, sans-serif;
+            background: #ffffff;
+            color: #183153;
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 460px;
+            padding: 35px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #ffffff;
+        }
+
+        .logo {
+            text-align: center;
+            font-size: 42px;
+            margin-bottom: 12px;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 26px;
+            margin: 0 0 12px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #64748b;
+            line-height: 1.6;
+            margin-bottom: 26px;
+        }
+
+        label {
+            display: block;
+            margin: 17px 0 8px;
+            font-weight: 600;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 13px;
+            border: 1px solid #cbd5e1;
+            border-radius: 7px;
+            background: #ffffff;
+            color: #183153;
+            font-size: 15px;
+        }
+
+        input:focus, select:focus {
+            outline: 2px solid #bfdbfe;
+            border-color: #2563eb;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 24px;
+            padding: 13px;
+            border: none;
+            border-radius: 7px;
+            background: #245b8f;
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #19456e;
+        }
+
+        .error {
+            margin-top: 15px;
+            color: #b91c1c;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .footer {
+            margin-top: 24px;
+            text-align: center;
+            color: #64748b;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="login-card">
+
+        <div class="logo">🚗</div>
+
+        <h1>Welcome Back!</h1>
+
+        <p class="subtitle">
+            Vehicle Insurance Risk Assessment System
+            <br>
+            Sign in to access your dashboard.
+        </p>
+
+        <form action="{{ url_for('login') }}" method="POST">
+
+            <label for="role">Select Role</label>
+
+            <select id="role" name="role" required>
+                <option value="">Choose your role</option>
+                <option value="Admin">Admin</option>
+                <option value="Analyst">Analyst</option>
+                <option value="Underwriter">Underwriter</option>
+            </select>
+
+            <label for="username">Username</label>
+
+            <input
+                type="text"
+                id="username"
+                name="username"
+                placeholder="Enter your username"
+                autocomplete="username"
+                required
+            >
+
+            <label for="password">Password</label>
+
+            <input
+                type="password"
+                id="password"
+                name="password"
+                placeholder="Enter your password"
+                autocomplete="current-password"
+                required
+            >
+
+            <button type="submit">Login</button>
+
+        </form>
+
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+
+        <div class="footer">
+            Vehicle Insurance Risk Assessment System
+        </div>
+
+    </main>
+</body>
+</html>
+
+================ templates\prediction.html ================
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Assessment</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <h2>Vehicle Insurance Risk Assessment</h2>
+        <a href="/dashboard">Back to Dashboard</a>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h1>Vehicle Risk Assessment</h1>
+            <p>Enter the driver's details to assess insurance claim risk.</p>
+
+            <form action="/predict" method="post">
+                <label for="driver_age">Driver Age</label>
+                <input id="driver_age" name="driver_age"
+                       type="number" min="18" max="100" required>
+
+                <label for="past_accidents">Past Accidents</label>
+                <input id="past_accidents" name="past_accidents"
+                       type="number" min="0" required>
+
+                <label for="speeding_tickets">Speeding Tickets</label>
+                <input id="speeding_tickets" name="speeding_tickets"
+                       type="number" min="0" required>
+
+                <label for="annual_mileage">Annual Mileage</label>
+                <input id="annual_mileage" name="annual_mileage"
+                       type="number" min="0" required>
+
+                <button type="submit">Assess Risk</button>
+            </form>
+        </section>
+    </main>
+</body>
+</html>
+
+================ templates\result.html ================
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Assessment Result</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <h2>Vehicle Insurance Risk Assessment</h2>
+        <a href="/dashboard">Dashboard</a>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h1>Risk Assessment Result</h1>
+
+            <h2>{{ risk_label }}</h2>
+            <p>{{ risk_description }}</p>
+
+            {% if probability is not none %}
+                <p>
+                    <strong>Predicted claim probability:</strong>
+                    {{ probability }}%
+                </p>
+            {% endif %}
+
+            <h3>Driver Details</h3>
+            <p><strong>Driver Age:</strong> {{ driver_age }}</p>
+            <p><strong>Past Accidents:</strong> {{ past_accidents }}</p>
+            <p><strong>Speeding Tickets:</strong> {{ speeding_tickets }}</p>
+            <p><strong>Annual Mileage:</strong> {{ annual_mileage }}</p>
+
+            <button onclick="location.href='/prediction'">
+                Assess Another Driver
+            </button>
+
+            <button onclick="location.href='/dashboard'">
+                Back to Dashboard
+            </button>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,0 +1,183 @@
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f3f6fa;
+    color: #183153;
+    line-height: 1.6;
+}
+
+.topbar {
+    min-height: 100px;
+    padding: 22px 4%;
+    background: #ffffff;
+    border-bottom: 1px solid #dce4ed;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.topbar h2 {
+    margin: 0;
+    font-size: 27px;
+    color: #183b63;
+}
+
+.topbar a {
+    color: #245b8f;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.topbar a:hover {
+    text-decoration: underline;
+}
+
+.container {
+    width: 92%;
+    max-width: 1210px;
+    margin: 35px auto;
+}
+
+.container > h1 {
+    font-size: 34px;
+    margin: 0 0 8px;
+    color: #183b63;
+}
+
+.container > p {
+    margin-top: 0;
+    margin-bottom: 24px;
+}
+
+.cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 22px;
+    margin: 24px 0 28px;
+}
+
+.card {
+    background: #ffffff;
+    border: 1px solid #dce4ed;
+    border-radius: 10px;
+    padding: 25px;
+    margin-bottom: 22px;
+}
+
+.cards .card {
+    margin-bottom: 0;
+    min-height: 180px;
+}
+
+.card h2,
+.card h3 {
+    color: #183b63;
+    margin-top: 0;
+}
+
+.cards .card p {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 0;
+}
+
+.card form {
+    max-width: 650px;
+}
+
+label {
+    display: block;
+    margin: 17px 0 7px;
+    font-weight: 600;
+}
+
+input,
+select {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #183153;
+    font-size: 15px;
+}
+
+input:focus,
+select:focus {
+    outline: 2px solid #bfdbfe;
+    border-color: #245b8f;
+}
+
+button {
+    display: inline-block;
+    margin-top: 22px;
+    padding: 12px 21px;
+    border: none;
+    border-radius: 6px;
+    background: #245b8f;
+    color: #ffffff;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #19456e;
+}
+
+.role-panel {
+    margin: 20px 0;
+    padding: 20px;
+    border-left: 4px solid #245b8f;
+    border-radius: 6px;
+    background: #eef5fc;
+}
+
+.role-panel h2,
+.role-panel h3 {
+    margin-top: 0;
+}
+
+.result-low {
+    color: #15803d;
+}
+
+.result-medium {
+    color: #b45309;
+}
+
+.result-high {
+    color: #b91c1c;
+}
+
+@media (max-width: 760px) {
+    .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 20px;
+    }
+
+    .topbar h2 {
+        font-size: 22px;
+    }
+
+    .container {
+        width: 92%;
+        margin: 24px auto;
+    }
+
+    .cards {
+        grid-template-columns: 1fr;
+    }
+
+    .card {
+        padding: 20px;
+    }
+}

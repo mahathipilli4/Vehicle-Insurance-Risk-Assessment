@@ -1,0 +1,193 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Management</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        .users-layout {
+            max-width: 1100px;
+            margin: 30px auto;
+            padding: 20px;
+        }
+
+        .users-card {
+            background: white;
+            border: 1px solid #dce4ed;
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .users-card input,
+        .users-card select {
+            width: 100%;
+            padding: 11px;
+            margin: 8px 0 15px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+        }
+
+        .users-card label {
+            font-weight: bold;
+        }
+
+        .users-card button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: #245b8f;
+            color: white;
+        }
+
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .users-table th,
+        .users-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dce4ed;
+        }
+
+        .users-table th {
+            background: #eef3f8;
+        }
+
+        .delete-button {
+            background: #b42318 !important;
+        }
+
+        .success-message {
+            color: #15803d;
+            font-weight: bold;
+        }
+
+        .error-message {
+            color: #b42318;
+            font-weight: bold;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #245b8f;
+        }
+
+        @media (max-width: 650px) {
+            .users-table th,
+            .users-table td {
+                padding: 8px 5px;
+                font-size: 13px;
+            }
+
+            .users-card {
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="topbar">
+        <h2>User Management</h2>
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </header>
+
+    <main class="users-layout">
+        <a class="back-link" href="{{ url_for('dashboard') }}">
+            ← Back to Dashboard
+        </a>
+
+        <h1>Manage Users</h1>
+        <p>Logged in as {{ username }} ({{ role }})</p>
+
+        {% if message %}
+            <p class="success-message">{{ message }}</p>
+        {% endif %}
+
+        {% if error %}
+            <p class="error-message">{{ error }}</p>
+        {% endif %}
+
+        <section class="users-card">
+            <h2>Add New User</h2>
+
+            <form method="POST" action="{{ url_for('manage_users') }}">
+                <input type="hidden" name="action" value="add">
+
+                <label for="username">Username</label>
+                <input id="username" name="username"
+                       required maxlength="80">
+
+                <label for="password">Password</label>
+                <input id="password" name="password"
+                       type="password" required minlength="8">
+
+                <label for="role">Role</label>
+                <select id="role" name="role" required>
+                    <option value="">Select a role</option>
+                    <option value="Admin">Admin</option>
+                    <option value="Analyst">Analyst</option>
+                    <option value="Underwriter">Underwriter</option>
+                </select>
+
+                <button type="submit">Add User</button>
+            </form>
+        </section>
+
+        <section class="users-card">
+            <h2>Existing Users</h2>
+
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user["id"] }}</td>
+                        <td>{{ user["username"] }}</td>
+                        <td>{{ user["role"] }}</td>
+                        <td>
+                            <form method="POST"
+                                  action="{{ url_for('manage_users') }}"
+                                  onsubmit="return confirm('Delete this user?');">
+
+                                <input type="hidden" name="action"
+                                       value="delete">
+
+                                <input type="hidden" name="user_id"
+                                       value="{{ user['id'] }}">
+
+                                <button class="delete-button"
+                                        type="submit">
+                                    Delete
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4">No users found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </main>
+</body>
+</html>

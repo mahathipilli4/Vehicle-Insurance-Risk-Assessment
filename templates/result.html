@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Risk Assessment Result</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        .risk-explanation {
+            margin: 25px 0;
+            padding: 22px;
+            background: #f1f6fc;
+            border-left: 5px solid #245b8f;
+            border-radius: 8px;
+        }
+
+        .risk-explanation h3 {
+            margin-top: 0;
+            color: #183b63;
+        }
+
+        .risk-explanation ul {
+            padding-left: 22px;
+            line-height: 1.9;
+        }
+
+        .risk-note {
+            margin-top: 15px;
+            color: #64748b;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .decision-section {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #dce4ed;
+        }
+
+        .decision-section select {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin: 12px 0 18px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 15px;
+        }
+
+        .decision-section button {
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="topbar">
+        <h2>Vehicle Insurance Risk Assessment</h2>
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+    </header>
+
+    <main class="container">
+
+        <section class="card">
+
+            <h1>Risk Assessment Result</h1>
+
+            <h2>{{ risk_label }}</h2>
+
+            <p>{{ risk_description }}</p>
+
+            {% if probability is not none %}
+                <p>
+                    <strong>Predicted Claim Probability:</strong>
+                    {{ probability }}%
+                </p>
+            {% endif %}
+
+
+            <!-- Driver Details -->
+
+            <h3>Driver Details</h3>
+
+            <p>
+                <strong>Driver Age:</strong>
+                {{ driver_age }}
+            </p>
+
+            <p>
+                <strong>Past Accidents:</strong>
+                {{ past_accidents }}
+            </p>
+
+            <p>
+                <strong>Speeding Tickets:</strong>
+                {{ speeding_tickets }}
+            </p>
+
+            <p>
+                <strong>Annual Mileage:</strong>
+                {{ annual_mileage }}
+            </p>
+
+
+            <!-- Risk Explanation -->
+
+            <div class="risk-explanation">
+
+                <h3>Why Was This Risk Level Predicted?</h3>
+
+                <p>
+                    The following driver details are relevant
+                    risk indicators for further review:
+                </p>
+
+                <ul>
+                    {% for reason in risk_reasons %}
+                        <li>{{ reason }}</li>
+                    {% endfor %}
+                </ul>
+
+                <p class="risk-note">
+                    These indicators are based on simple
+                    input-based review rules. They are not
+                    exact individual feature contributions
+                    calculated by the machine learning model.
+                    The predicted probability considers the
+                    combined driver information.
+                </p>
+
+            </div>
+
+
+            <!-- Underwriter Decision -->
+
+            {% if role == "Underwriter" %}
+
+                <div class="decision-section">
+
+                    <h2>Underwriting Decision</h2>
+
+                    <p>
+                        Review the driver's details and
+                        model-estimated risk before selecting
+                        your decision.
+                    </p>
+
+                    <form method="POST"
+                          action="{{ url_for('save_underwriting_decision') }}">
+
+                        <input type="hidden"
+                               name="driver_age"
+                               value="{{ driver_age }}">
+
+                        <input type="hidden"
+                               name="past_accidents"
+                               value="{{ past_accidents }}">
+
+                        <input type="hidden"
+                               name="speeding_tickets"
+                               value="{{ speeding_tickets }}">
+
+                        <input type="hidden"
+                               name="annual_mileage"
+                               value="{{ annual_mileage }}">
+
+                        <label for="underwriting_decision">
+                            <strong>Select Decision:</strong>
+                        </label>
+
+                        <select id="underwriting_decision"
+                                name="underwriting_decision"
+                                required>
+
+                            <option value="">
+                                -- Select Decision --
+                            </option>
+
+                            <option value="Accept">
+                                Accept
+                            </option>
+
+                            <option value="Reject">
+                                Reject
+                            </option>
+
+                            <option value="Refer for Review">
+                                Refer for Review
+                            </option>
+
+                        </select>
+
+                        <button type="submit">
+                            Save Underwriting Decision
+                        </button>
+
+                    </form>
+
+                    <p class="risk-note">
+                        The model prediction supports your review.
+                        The final insurance decision is made by
+                        the Underwriter, not automatically by
+                        the model.
+                    </p>
+
+                </div>
+
+            {% endif %}
+
+
+            <!-- Navigation Buttons -->
+
+            <button type="button"
+                    onclick="window.location.href='/prediction'">
+                Assess Another Driver
+            </button>
+
+            <button type="button"
+                    onclick="window.location.href='/dashboard'">
+                Back to Dashboard
+            </button>
+
+        </section>
+
+    </main>
+
+</body>
+</html>

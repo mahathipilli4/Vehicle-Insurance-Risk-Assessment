@@ -1,0 +1,44 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risk Assessment</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <h2>Vehicle Insurance Risk Assessment</h2>
+        <a href="/dashboard">Back to Dashboard</a>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <h1>Vehicle Risk Assessment</h1>
+            <p>Enter the driver's details to assess insurance claim risk.</p>
+
+            <form action="/predict" method="post">
+                <label for="driver_age">Driver Age</label>
+                <input id="driver_age" name="driver_age"
+                       type="number" min="18" max="100" required>
+
+                <label for="past_accidents">Past Accidents</label>
+                <input id="past_accidents" name="past_accidents"
+                       type="number" min="0" required>
+
+                <label for="speeding_tickets">Speeding Tickets</label>
+                <input id="speeding_tickets" name="speeding_tickets"
+                       type="number" min="0" required>
+
+                <label for="annual_mileage">Annual Mileage</label>
+                <input id="annual_mileage" name="annual_mileage"
+                       type="number" min="0" required>
+
+                <button type="submit">Assess Risk</button>
+            </form>
+        </section>
+    </main>
+</body>
+</html>

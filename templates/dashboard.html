@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Insurance Dashboard</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f3f6fa;
+            color: #183153;
+        }
+
+        .topbar {
+            min-height: 75px;
+            padding: 0 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #fff;
+            border-bottom: 1px solid #dce4ed;
+        }
+
+        .topbar h2 {
+            margin: 0;
+            font-size: 23px;
+            color: #183b63;
+        }
+
+        .topbar a {
+            text-decoration: none;
+            color: #245b8f;
+            font-weight: bold;
+        }
+
+        .layout {
+            display: flex;
+            min-height: calc(100vh - 75px);
+        }
+
+        .sidebar {
+            width: 245px;
+            flex-shrink: 0;
+            padding: 25px 15px;
+            background: #183b63;
+            color: white;
+        }
+
+        .profile {
+            padding: 10px 12px 24px;
+            margin-bottom: 18px;
+            border-bottom: 1px solid #47617e;
+        }
+
+        .profile h3 {
+            margin: 0 0 8px;
+            font-size: 19px;
+        }
+
+        .profile p {
+            margin: 5px 0;
+            color: #d9e5f3;
+            font-size: 14px;
+            overflow-wrap: anywhere;
+        }
+
+        .nav-title {
+            margin: 18px 12px 10px;
+            color: #b9cbe0;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 13px;
+            padding: 13px 12px;
+            margin: 5px 0;
+            border-radius: 7px;
+            color: white;
+            text-decoration: none;
+            font-size: 15px;
+            transition: background 0.2s;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            background: #2b5b89;
+        }
+
+        .nav-icon {
+            width: 24px;
+            text-align: center;
+            font-size: 19px;
+        }
+
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            padding: 32px;
+        }
+
+        .welcome { margin-bottom: 25px; }
+
+        .welcome h1 {
+            margin: 0 0 10px;
+            font-size: 30px;
+            color: #183b63;
+        }
+
+        .welcome p { color: #52657b; }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card,
+        .workspace {
+            background: white;
+            border: 1px solid #dce4ed;
+            border-radius: 10px;
+            padding: 24px;
+        }
+
+        .stat-card h3 {
+            margin: 0 0 14px;
+            font-size: 15px;
+            color: #61748a;
+        }
+
+        .stat-card p {
+            margin: 0;
+            font-size: 21px;
+            font-weight: bold;
+            color: #183b63;
+        }
+
+        .workspace h2 {
+            margin-top: 0;
+            font-size: 22px;
+        }
+
+        .workspace p {
+            line-height: 1.7;
+            color: #52657b;
+        }
+
+        .workspace ul {
+            padding-left: 22px;
+            line-height: 2;
+        }
+
+        .action-link {
+            display: inline-block;
+            margin: 12px 10px 0 0;
+            padding: 12px 18px;
+            border-radius: 6px;
+            background: #245b8f;
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .action-link:hover { background: #183b63; }
+
+        .secondary-link {
+            background: #e8eef5;
+            color: #183b63;
+        }
+
+        .secondary-link:hover { background: #d6e2ef; }
+
+        .note {
+            margin-top: 20px;
+            padding: 13px 15px;
+            background: #f3f6fa;
+            border-left: 4px solid #7897b8;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        @media (max-width: 850px) {
+            .layout { flex-direction: column; }
+            .sidebar { width: 100%; padding: 15px; }
+            .profile { padding-bottom: 15px; }
+            .nav-title { margin-top: 10px; }
+            .main-content { padding: 22px 16px; }
+            .cards { grid-template-columns: 1fr; }
+            .topbar { padding: 15px 16px; gap: 12px; }
+            .topbar h2 { font-size: 18px; }
+        }
+    </style>
+</head>
+
+<body>
+
+<header class="topbar">
+    <h2>Vehicle Insurance Risk Assessment</h2>
+    <a href="{{ url_for('logout') }}">Logout ↗</a>
+</header>
+
+<div class="layout">
+
+    <aside class="sidebar">
+
+        <div class="profile">
+            <h3>☰ Navigation</h3>
+            <p>{{ username }}</p>
+            <p>{{ role }}</p>
+        </div>
+
+        <p class="nav-title">Main Menu</p>
+
+        <a class="nav-link active" href="{{ url_for('dashboard') }}">
+            <span class="nav-icon">⌂</span>
+            Dashboard
+        </a>
+
+        {% if role in ["Admin", "Analyst", "Underwriter"] %}
+        <a class="nav-link" href="{{ url_for('prediction') }}">
+            <span class="nav-icon">⌕</span>
+            Risk Assessment
+        </a>
+        {% endif %}
+
+        {% if role in ["Admin", "Analyst", "Underwriter"] %}
+        <a class="nav-link" href="{{ url_for('history') }}">
+            <span class="nav-icon">◷</span>
+            Assessment History
+        </a>
+        {% endif %}
+        {% if role == "Admin" %}
+         <a class="nav-link" href="{{ url_for('manage_users') }}">
+           <span class="nav-icon">♙</span>
+          User Management
+       </a>
+       {% endif %}
+
+       {% if role in ["Admin", "Analyst"] %}
+         <a class="nav-link" href="{{ url_for('model_performance') }}">
+         <span class="nav-icon">📊</span>
+         Model Performance
+       </a>
+        {% endif %}
+
+        <p class="nav-title">Account</p>
+
+        <a class="nav-link" href="{{ url_for('logout') }}">
+            <span class="nav-icon">⇥</span>
+            Logout
+        </a>
+
+    </aside>
+
+    <main class="main-content">
+
+        <section class="welcome">
+            <h1>
+                {% if role == "Admin" %}
+                    Admin Dashboard
+                {% elif role == "Analyst" %}
+                    Analyst Dashboard
+                {% elif role == "Underwriter" %}
+                    Underwriter Dashboard
+                {% else %}
+                    User Dashboard
+                {% endif %}
+            </h1>
+
+            <p>
+                Welcome, <strong>{{ username }}</strong>.
+                You are logged in as <strong>{{ role }}</strong>.
+            </p>
+        </section>
+
+        <section class="cards">
+
+            <article class="stat-card">
+              <h3>Assessment Module</h3>
+                  <p>Vehicle Risk Assessment</p>
+                </article>
+
+            <article class="stat-card">
+                <h3>Your Workspace</h3>
+                <p>
+                    {% if role == "Admin" %}
+                        Administration
+                    {% elif role == "Analyst" %}
+                        Data Analysis
+                    {% elif role == "Underwriter" %}
+                        Risk Review
+                    {% else %}
+                        General
+                    {% endif %}
+                </p>
+            </article>
+
+            <article class="stat-card">
+                <h3>Available Features</h3>
+                <p>Risk &amp; History</p>
+            </article>
+
+        </section>
+
+        {% if role == "Admin" %}
+
+        <section class="workspace">
+            <h2>Admin Control Panel</h2>
+
+            <p>
+                Manage user accounts, monitor the application,
+                and review vehicle insurance risk assessments.
+            </p>
+
+            <ul>
+                <li>Access the risk assessment module</li>
+                <li>Review saved assessment history</li>
+                <li>Create and manage user accounts</li>
+                <li>View machine learning model performance</li>
+                <li>Monitor available application features</li>
+            </ul>
+
+            <a class="action-link" href="{{ url_for('prediction') }}">
+                Start Risk Assessment
+            </a>
+
+            <a class="action-link secondary-link"
+               href="{{ url_for('history') }}">
+                View Assessment History
+            </a>
+
+            <a class="action-link" href="{{ url_for('manage_users') }}">
+                ♙ Manage Users
+            </a>
+
+            <a class="action-link" href="{{ url_for('model_performance') }}">
+                📊 Model Performance
+            </a>
+
+        </section>
+
+        {% elif role == "Analyst" %}
+
+        <section class="workspace">
+            <h2>Analyst Workspace</h2>
+
+            <p>
+               Analyse driver information and estimate the probability
+               of an insurance claim.
+            </p>
+
+            <ul>
+                <li>Enter driver information</li>
+                <li>Generate claim-risk predictions</li>
+                <li>Review previous assessment records</li>
+            </ul>
+
+            <a class="action-link" href="{{ url_for('prediction') }}">
+                Start Risk Analysis
+            </a>
+
+            <a class="action-link secondary-link"
+               href="{{ url_for('history') }}">
+                Review History
+            </a>
+        </section>
+
+        {% elif role == "Underwriter" %}
+
+        <section class="workspace">
+            <h2>Underwriter Workspace</h2>
+
+            <p>
+                Review driver details and model-estimated claim
+                probability as supporting information for manual
+                underwriting review.
+            </p>
+
+            <ul>
+                <li>Assess the estimated claim risk</li>
+                <li>Review previous assessment results</li>
+                <li>Use predictions as supporting information</li>
+            </ul>
+
+            <a class="action-link" href="{{ url_for('prediction') }}">
+                Assess Claim Risk
+            </a>
+
+            <a class="action-link secondary-link"
+               href="{{ url_for('history') }}">
+                View Assessment History
+            </a>
+
+            <div class="note">
+                Final underwriting decisions should not rely only
+                on this model's prediction.
+            </div>
+        </section>
+
+        {% endif %}
+
+    </main>
+
+</div>
+
+</body>
+</html>

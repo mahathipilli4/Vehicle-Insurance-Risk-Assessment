@@ -1,0 +1,91 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assessment History</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <header class="topbar">
+        <h2>Vehicle Insurance Risk Assessment</h2>
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+    </header>
+
+    <main class="container">
+        <h1>Assessment History</h1>
+        <p>Previous vehicle insurance risk assessments</p>
+
+        <section class="card" style="overflow-x: auto;">
+
+            {% if records %}
+            <table style="width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr>
+                        <th>Driver Age</th>
+                        <th>Past Accidents</th>
+                        <th>Speeding Tickets</th>
+                        <th>Annual Mileage</th>
+                        <th>Prediction</th>
+                        <th>Claim Probability</th>
+                        <th>Underwriting Decision</th>
+                        <th>Reviewed By</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for record in records %}
+                    <tr>
+                        <td>{{ record.driver_age }}</td>
+                        <td>{{ record.past_accidents }}</td>
+                        <td>{{ record.speeding_tickets }}</td>
+                        <td>{{ record.annual_mileage }}</td>
+
+                        <td>
+                            {% if record.prediction|string == "1" %}
+                                Claim Predicted
+                            {% elif record.prediction|string == "0" %}
+                                No Claim Predicted
+                            {% else %}
+                                {{ record.prediction }}
+                            {% endif %}
+                        </td>
+
+                        <td>{{ record.claim_probability }}%</td>
+
+                        <td>
+                            {% if record.underwriting_decision %}
+                                {{ record.underwriting_decision }}
+                            {% else %}
+                                Pending
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if record.reviewed_by %}
+                                {{ record.reviewed_by }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            {% else %}
+                <p>No assessment records available yet.</p>
+            {% endif %}
+
+        </section>
+
+        <a href="{{ url_for('dashboard') }}" class="button">
+            Back to Dashboard
+        </a>
+    </main>
+
+</body>
+</html>
